@@ -73,6 +73,119 @@ class Forecast:
         self.timestep = timestep
         self.times, self.coords, self.variables = get_attributes(resolution, timestep)
 
+    def get_full(self, variables, forecast_date, forecast_time, query_time, lat, lon):
+        """Returns the latest forecast available , given the forecast date and time, the query time, the latitude and longitude
+
+        Note
+        ----
+        - "raw" since you have to put indexes in rather than coordinates and it returns a file object rather than a processed file
+        - If a variable has level dependance, you get all the levels - it seems extremely hard to impliment otherwise
+
+        Args:
+            variables (list): list of required variables by short name
+            forecast_date (string): date of the forecast in the format "YYYYMMDD"
+            forecast_time (string): time of the forecast in the format "HH". Can be "00", "06", "12" or "18"
+            query_time (string): time of the query in the format "[min:max]" or a single value
+            lat (string or number): latitude in the format "[min:max]" or a single value
+            lon (string or number): longitude in the format "[min:max]" or a single value
+
+        Raises:
+            ValueError: Invalid variable choice
+            ValueError: Level dependance needs to be specified for chosen variable
+            Exception: Unknown failure to download the file
+
+        Returns:
+            File Object: File object with the downloaded variable data (see File documentation)
+        """
+
+        # Get latitude
+        lat = self.value_input_to_index("lat", lat)
+
+        # Get longitude
+        lon = self.value_input_to_index("lon", lon)
+
+        # Get lev
+        lev = "[0:%s]" % int(
+            (self.coords["lev"]["minimum"] - self.coords["lev"]["maximum"])
+            / self.coords["lev"]["resolution"]
+        )
+
+        # Make query
+        query = ""
+        for variable in variables:
+            if variable not in self.variables.keys():
+                raise ValueError(
+                    "The variable {name} is not a valid choice for this weather model".format(
+                        name=variable
+                    )
+                )
+            if self.variables[variable]["level_dependent"] == True and lev == []:
+                raise ValueError(
+                    "The variable {name} requires the altitude/level to be defined".format(
+                        name=variable
+                    )
+                )
+            elif self.variables[variable]["level_dependent"] == True:
+                query += "," + variable + query_time + lev + lat + lon
+            else:
+                query += "," + variable + query_time + lat + lon
+
+        query = query[1:]
+
+        r = requests.get(
+            url.format(
+                res=self.resolution,
+                step=self.timestep,
+                date=forecast_date,
+                hour=int(forecast_time),
+                info="ascii?{query}".format(query=query),
+            )
+        )
+        if r.status_code != 200:
+            raise Exception(
+                """The forecast information could not be downloaded. 
+        This error should never occure but it may be helpful to know the requested information was:
+        - Forecast date: {f_date}
+        - Forecast time: {f_time}
+        - Query time: {q_time}
+        - Latitude: {lat}
+        - Longitude: {lon}""".format(
+                    f_date=forecast_date,
+                    f_time=forecast_time,
+                    q_time=query_time,
+                    lat=lat,
+                    lon=lon,
+                )
+            )
+        elif r.text[:6] == "<html>":
+            raise Exception(
+                """The forecast information could not be downloaded. 
+        This error should never occure but it may be helpful to know the requested information was:
+        - Forecast date: {f_date}
+        - Forecast time: {f_time}
+        - Query time: {q_time}
+        - Latitude: {lat}
+        - Longitude: {lon}
+        
+        The response given was: {res}
+        
+        Sometimes forcasts do not becone available when they should (e.g. when 06hr is availble in 0p25 it isn't in 0p50)""".format(
+                    f_date=forecast_date,
+                    f_time=forecast_time,
+                    q_time=query_time,
+                    lat=lat,
+                    lon=lon,
+                    res=re.findall(
+                        """(<h2>GrADS Data Server - error<\/h2>)((.|\n)*)(Check the syntax of your request, or click <a href=".help">here<\/a> for help using the server.)""",
+                        r.text,
+                    ),
+                )
+            )
+        else:
+            return File(r.text)
+    
+    
+    
     def get(self, variables, date_time, lat, lon):
         """Returns the latest forecast available for the requested date and time
 
