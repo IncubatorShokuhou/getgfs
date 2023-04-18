@@ -85,7 +85,7 @@ class Forecast:
             variables (list): list of required variables by short name
             forecast_date (string): date of the forecast in the format "YYYYMMDD"
             forecast_time (string): time of the forecast in the format "HH". Can be "00", "06", "12" or "18"
-            query_time (string): time of the query in the format "[min:max]" or a single value
+            query_time (string): time of the query in the format of a single value
             lat (string or number): latitude in the format "[min:max]" or a single value
             lon (string or number): longitude in the format "[min:max]" or a single value
 
@@ -98,6 +98,9 @@ class Forecast:
             File Object: File object with the downloaded variable data (see File documentation)
         """
 
+        if not "[" in query_time:
+            query_time = "[" + str(query_time) + "]"
+        
         # Get latitude
         lat = self.value_input_to_index("lat", lat)
 
